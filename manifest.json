@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "assistant",
+	"name": "Assistant",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": " An AI assistant plugin for Obsidian that sends selected text to OpenAI's GPT API.",
+	"author": "hmckenzie",
+	"authorUrl": "https://github.com/hmckenzie",
+	"fundingUrl": "https://github.com/hmckenzie",
 	"isDesktopOnly": false
 }
