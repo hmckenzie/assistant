@@ -15,13 +15,6 @@ export default class MyOpenAIPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    // Add a command to trigger the API interaction
-    this.addCommand({
-      id: 'interact-with-openai',
-      name: 'Interact with OpenAI',
-      callback: () => this.interactWithOpenAI(),
-    });
-
     // Add a command to send selected text to OpenAI and append the response
     this.addCommand({
       id: 'send-selection-to-openai',
@@ -31,25 +24,6 @@ export default class MyOpenAIPlugin extends Plugin {
 
     // Add a settings tab for API key configuration
     this.addSettingTab(new OpenAISettingTab(this.app, this));
-  }
-
-  async interactWithOpenAI() {
-    const client = new OpenAI({
-      apiKey: this.settings.apiKey,
-      dangerouslyAllowBrowser: true,
-    });
-
-    try {
-      const chatCompletion = await client.chat.completions.create({
-        messages: [{ role: 'user', content: 'Say this is a test' }],
-        model: 'gpt-3.5-turbo',
-      });
-
-      // Here we just log the response, but you could display it in Obsidian
-      console.log('OpenAI response:', chatCompletion.choices[0].message.content);
-    } catch (error) {
-      console.error('Error interacting with OpenAI:', error);
-    }
   }
 
   async handleSelectedText(editor: Editor) {
