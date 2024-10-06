@@ -43,6 +43,13 @@ export default class AssistantPlugin extends Plugin {
       editorCallback: (editor: Editor) => this.handleSelectedTextWithPrompt(editor),
     });
 
+    // Add a command to send full note text to OpenAI with an additional prompt
+    this.addCommand({
+      id: 'send-full-note-with-prompt-to-openai',
+      name: 'Send Full Note with Prompt to OpenAI',
+      editorCallback: (editor: Editor) => this.handleFullNoteWithPrompt(editor),
+    });
+
     // Add a settings tab for API key configuration
     this.addSettingTab(new AssistantSettingTab(this.app, this));
   }
@@ -132,6 +139,65 @@ export default class AssistantPlugin extends Plugin {
           if (content) {
             responseText += content;
             // Append new content without replacing the selection or duplicating
+            editor.replaceRange(content, cursorPosition);
+            cursorPosition.ch += content.length;
+          }
+        }
+      } catch (error) {
+        console.error('Error interacting with OpenAI:', error);
+      }
+    });
+
+    promptModal.open();
+  }
+
+  async handleFullNoteWithPrompt(editor: Editor) {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      console.log('No active file found.');
+      return;
+    }
+
+    const fileContent = await this.app.vault.read(activeFile);
+    if (!fileContent) {
+      console.log('The current note is empty.');
+      return;
+    }
+
+    const promptModal = new PromptModal(this.app, async (userPrompt: string) => {
+      if (!userPrompt) {
+        console.log('No prompt provided.');
+        return;
+      }
+
+      const client = new OpenAI({
+        apiKey: this.settings.apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+
+      const cursorPosition = editor.getCursor('to');
+
+      try {
+        const responseStream = await client.chat.completions.create({
+          messages: [
+            { role: 'system', content: this.settings.systemMessage },
+            { role: 'user', content: `Prompt: ${userPrompt}\n\nFull Note: ${fileContent}` },
+          ],
+          model: 'gpt-3.5-turbo',
+          stream: true,
+        });
+
+        let responseText = '';
+        // Add a newline before the response to separate it from the full note
+        editor.replaceRange('\n\n', cursorPosition);
+        cursorPosition.line += 2;
+        cursorPosition.ch = 0;
+
+        for await (const part of responseStream) {
+          const content = part.choices[0]?.delta?.content;
+          if (content) {
+            responseText += content;
+            // Append new content without replacing existing text or duplicating
             editor.replaceRange(content, cursorPosition);
             cursorPosition.ch += content.length;
           }
