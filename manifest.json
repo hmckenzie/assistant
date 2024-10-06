@@ -1,7 +1,7 @@
 {
 	"id": "assistant",
 	"name": "Assistant",
-	"version": "1.3.2",
+	"version": "1.4.0",
 	"minAppVersion": "0.15.0",
 	"description": "An AI assistant plugin for Obsidian that sends selected text to OpenAI's GPT API.",
 	"author": "hmckenzie",

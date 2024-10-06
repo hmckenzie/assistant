@@ -5,11 +5,13 @@ import { readFileSync } from 'fs';
 interface AssistantSettings {
   apiKey: string;
   systemMessage: string;
+  model: string;
 }
 
 const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: '',
   systemMessage: '',
+  model: 'gpt-3.5-turbo',
 };
 
 export default class AssistantPlugin extends Plugin {
@@ -74,7 +76,7 @@ export default class AssistantPlugin extends Plugin {
           { role: 'system', content: this.settings.systemMessage },
           { role: 'user', content: selectedText },
         ],
-        model: 'gpt-3.5-turbo',
+        model: this.settings.model,
         stream: true,
       });
 
@@ -124,7 +126,7 @@ export default class AssistantPlugin extends Plugin {
             { role: 'system', content: this.settings.systemMessage },
             { role: 'user', content: `Prompt: ${userPrompt}\n\nSelected Text: ${selectedText}` },
           ],
-          model: 'gpt-3.5-turbo',
+          model: this.settings.model,
           stream: true,
         });
 
@@ -183,7 +185,7 @@ export default class AssistantPlugin extends Plugin {
             { role: 'system', content: this.settings.systemMessage },
             { role: 'user', content: `Prompt: ${userPrompt}\n\nFull Note: ${fileContent}` },
           ],
-          model: 'gpt-3.5-turbo',
+          model: this.settings.model,
           stream: true,
         });
 
@@ -243,6 +245,19 @@ class AssistantSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Model')
+      .setDesc('Enter the model to use for GPT interactions (e.g., gpt-3.5-turbo, gpt-4).')
+      .addText((text) =>
+        text
+          .setPlaceholder('Enter model name here...')
+          .setValue(this.plugin.settings.model)
+          .onChange(async (value) => {
+            this.plugin.settings.model = value;
             await this.plugin.saveSettings();
           })
       );
