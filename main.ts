@@ -102,10 +102,6 @@ export default class AssistantPlugin extends Plugin {
 
   async handleSelectedTextWithPrompt(editor: Editor) {
     const selectedText = editor.getSelection();
-    if (!selectedText) {
-      console.log('No text selected.');
-      return;
-    }
 
     const promptModal = new PromptModal(this.app, async (userPrompt: string) => {
       if (!userPrompt) {
@@ -124,7 +120,7 @@ export default class AssistantPlugin extends Plugin {
         const responseStream = await client.chat.completions.create({
           messages: [
             { role: 'system', content: this.settings.systemMessage },
-            { role: 'user', content: `Prompt: ${userPrompt}\n\nSelected Text: ${selectedText}` },
+            { role: 'user', content: `Prompt: ${userPrompt}${selectedText ? '\n\nSelected Text: ' + selectedText : ''}` },
           ],
           model: this.settings.model,
           stream: true,
