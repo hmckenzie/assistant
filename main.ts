@@ -1,12 +1,15 @@
-import { App, Plugin, PluginSettingTab, Setting, Editor } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Editor, TFile } from 'obsidian';
 import OpenAI from 'openai';
+import { readFileSync } from 'fs';
 
 interface AssistantSettings {
   apiKey: string;
-}
+  systemMessage: string;
+}  
 
 const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: '',
+  systemMessage: '',
 };
 
 export default class AssistantPlugin extends Plugin {
@@ -14,6 +17,17 @@ export default class AssistantPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
+
+    // Load default system message from file
+    try {
+      const fileContent = await this.app.vault.adapter.read('.obsidian/plugins/assistant/default-system-message.txt');
+      if (!this.settings.systemMessage) {
+        this.settings.systemMessage = fileContent;
+        await this.saveSettings();
+      }
+    } catch (error) {
+      console.error('Failed to load default system message:', error);
+    }
 
     // Add a command to send selected text to OpenAI and append the response
     this.addCommand({
@@ -42,7 +56,10 @@ export default class AssistantPlugin extends Plugin {
 
     try {
       const responseStream = await client.chat.completions.create({
-        messages: [{ role: 'user', content: selectedText }],
+        messages: [
+          { role: 'system', content: this.settings.systemMessage },
+          { role: 'user', content: selectedText },
+        ],
         model: 'gpt-3.5-turbo',
         stream: true,
       });
@@ -89,7 +106,7 @@ class AssistantSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Settings for OpenAI Plugin' });
+    containerEl.createEl('h2', { text: 'Settings for Assistant Plugin' });
 
     new Setting(containerEl)
       .setName('OpenAI API Key')
@@ -100,6 +117,19 @@ class AssistantSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('System Message')
+      .setDesc('Enter the system message for GPT interactions. Leave blank for no system message.')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('Enter system message here...')
+          .setValue(this.plugin.settings.systemMessage)
+          .onChange(async (value) => {
+            this.plugin.settings.systemMessage = value;
             await this.plugin.saveSettings();
           })
       );
