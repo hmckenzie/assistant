@@ -206,21 +206,39 @@ class PromptModal extends Modal {
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl('h2', { text: 'Enter your prompt' });
+    contentEl.empty();
+    contentEl.addClass('prompt-modal');
 
-    const inputEl = contentEl.createEl('textarea', {
+    const container = contentEl.createDiv({ cls: 'prompt-container' });
+    container.createEl('h2', { text: 'Enter your prompt', cls: 'prompt-header' });
+
+    const inputEl = container.createEl('textarea', {
       cls: 'prompt-input',
+    });
+
+    const buttonEl = container.createEl('button', {
+      text: 'Submit',
+      cls: 'prompt-submit',
     });
 
     inputEl.focus();
 
-    contentEl.createEl('button', {
-      text: 'Submit',
-      cls: 'prompt-submit',
-    }).addEventListener('click', () => {
+    buttonEl.addEventListener('click', () => {
       this.onSubmit(inputEl.value);
       this.close();
     });
+
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.alignItems = 'center';
+    container.style.gap = '20px';
+
+    inputEl.style.width = '80%';
+    inputEl.style.height = '100px';
+
+    buttonEl.style.marginTop = '10px';
+    buttonEl.style.padding = '10px 20px';
+    buttonEl.style.cursor = 'pointer';
   }
 
   onClose() {
