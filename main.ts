@@ -1,16 +1,16 @@
 import { App, Plugin, PluginSettingTab, Setting, Editor } from 'obsidian';
 import OpenAI from 'openai';
 
-interface MyPluginSettings {
+interface AssistantSettings {
   apiKey: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
+const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: '',
 };
 
-export default class MyOpenAIPlugin extends Plugin {
-  settings: MyPluginSettings;
+export default class AssistantPlugin extends Plugin {
+  settings: AssistantSettings;
 
   async onload() {
     await this.loadSettings();
@@ -23,7 +23,7 @@ export default class MyOpenAIPlugin extends Plugin {
     });
 
     // Add a settings tab for API key configuration
-    this.addSettingTab(new OpenAISettingTab(this.app, this));
+    this.addSettingTab(new AssistantSettingTab(this.app, this));
   }
 
   async handleSelectedText(editor: Editor) {
@@ -76,10 +76,10 @@ export default class MyOpenAIPlugin extends Plugin {
   }
 }
 
-class OpenAISettingTab extends PluginSettingTab {
-  plugin: MyOpenAIPlugin;
+class AssistantSettingTab extends PluginSettingTab {
+  plugin: AssistantPlugin;
 
-  constructor(app: App, plugin: MyOpenAIPlugin) {
+  constructor(app: App, plugin: AssistantPlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
