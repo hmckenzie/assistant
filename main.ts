@@ -228,6 +228,13 @@ class PromptModal extends Modal {
       this.close();
     });
 
+    inputEl.addEventListener('keydown', (event) => {
+      if (event.ctrlKey && event.key === 'Enter') {
+        this.onSubmit(inputEl.value);
+        this.close();
+      }
+    });
+
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     container.style.alignItems = 'center';
