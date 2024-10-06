@@ -1,11 +1,11 @@
-import { App, Plugin, PluginSettingTab, Setting, Editor, TFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Editor, TFile, Modal } from 'obsidian';
 import OpenAI from 'openai';
 import { readFileSync } from 'fs';
 
 interface AssistantSettings {
   apiKey: string;
   systemMessage: string;
-}  
+}
 
 const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: '',
@@ -34,6 +34,13 @@ export default class AssistantPlugin extends Plugin {
       id: 'send-selection-to-openai',
       name: 'Send Selection to OpenAI',
       editorCallback: (editor: Editor) => this.handleSelectedText(editor),
+    });
+
+    // Add a command to send selected text to OpenAI with an additional prompt
+    this.addCommand({
+      id: 'send-selection-with-prompt-to-openai',
+      name: 'Send Selection with Prompt to OpenAI',
+      editorCallback: (editor: Editor) => this.handleSelectedTextWithPrompt(editor),
     });
 
     // Add a settings tab for API key configuration
@@ -82,6 +89,59 @@ export default class AssistantPlugin extends Plugin {
     } catch (error) {
       console.error('Error interacting with OpenAI:', error);
     }
+  }
+
+  async handleSelectedTextWithPrompt(editor: Editor) {
+    const selectedText = editor.getSelection();
+    if (!selectedText) {
+      console.log('No text selected.');
+      return;
+    }
+
+    const promptModal = new PromptModal(this.app, async (userPrompt: string) => {
+      if (!userPrompt) {
+        console.log('No prompt provided.');
+        return;
+      }
+
+      const client = new OpenAI({
+        apiKey: this.settings.apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+
+      const cursorPosition = editor.getCursor('to');
+
+      try {
+        const responseStream = await client.chat.completions.create({
+          messages: [
+            { role: 'system', content: this.settings.systemMessage },
+            { role: 'user', content: `Prompt: ${userPrompt}\n\nSelected Text: ${selectedText}` },
+          ],
+          model: 'gpt-3.5-turbo',
+          stream: true,
+        });
+
+        let responseText = '';
+        // Add a newline before the response to separate it from the selected text
+        editor.replaceRange('\n\n', cursorPosition);
+        cursorPosition.line += 2;
+        cursorPosition.ch = 0;
+
+        for await (const part of responseStream) {
+          const content = part.choices[0]?.delta?.content;
+          if (content) {
+            responseText += content;
+            // Append new content without replacing the selection or duplicating
+            editor.replaceRange(content, cursorPosition);
+            cursorPosition.ch += content.length;
+          }
+        }
+      } catch (error) {
+        console.error('Error interacting with OpenAI:', error);
+      }
+    });
+
+    promptModal.open();
   }
 
   async loadSettings() {
@@ -133,5 +193,38 @@ class AssistantSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+  }
+}
+
+class PromptModal extends Modal {
+  onSubmit: (input: string) => void;
+
+  constructor(app: App, onSubmit: (input: string) => void) {
+    super(app);
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h2', { text: 'Enter your prompt' });
+
+    const inputEl = contentEl.createEl('textarea', {
+      cls: 'prompt-input',
+    });
+
+    inputEl.focus();
+
+    contentEl.createEl('button', {
+      text: 'Submit',
+      cls: 'prompt-submit',
+    }).addEventListener('click', () => {
+      this.onSubmit(inputEl.value);
+      this.close();
+    });
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
   }
 }
