@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Editor, TFile, Modal } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Editor, TFile, Modal, SuggestModal } from 'obsidian';
 import OpenAI from 'openai';
 import { readFileSync } from 'fs';
 
@@ -45,6 +45,13 @@ export default class AssistantPlugin extends Plugin {
       id: 'send-selection-with-prompt-to-openai',
       name: 'Send Selection with Prompt to OpenAI',
       editorCallback: (editor: Editor) => this.handleSelectedTextWithPrompt(editor),
+    });
+
+    // Add a command to send selected text to OpenAI with a template from the Prompts Folder
+    this.addCommand({
+      id: 'send-selection-with-template-to-openai',
+      name: 'Send Selection with Template to OpenAI',
+      editorCallback: (editor: Editor) => this.handleSelectedTextWithTemplate(editor),
     });
 
     // Add a command to send full note text to OpenAI with an additional prompt
@@ -149,6 +156,55 @@ export default class AssistantPlugin extends Plugin {
     });
 
     promptModal.open();
+  }
+
+  async handleSelectedTextWithTemplate(editor: Editor) {
+    const selectedText = editor.getSelection();
+
+    const templateModal = new TemplateSuggestModal(this.app, this, async (templateContent: string) => {
+      if (!templateContent) {
+        console.log('No template selected.');
+        return;
+      }
+
+      const client = new OpenAI({
+        apiKey: this.settings.apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+
+      const cursorPosition = editor.getCursor('to');
+
+      try {
+        const responseStream = await client.chat.completions.create({
+          messages: [
+            { role: 'system', content: this.settings.systemMessage },
+            { role: 'user', content: `Template: ${templateContent}${selectedText ? '\n\nSelected Text: ' + selectedText : ''}` },
+          ],
+          model: this.settings.model,
+          stream: true,
+        });
+
+        let responseText = '';
+        // Add a newline before the response to separate it from the selected text
+        editor.replaceRange('\n\n', cursorPosition);
+        cursorPosition.line += 2;
+        cursorPosition.ch = 0;
+
+        for await (const part of responseStream) {
+          const content = part.choices[0]?.delta?.content;
+          if (content) {
+            responseText += content;
+            // Append new content without replacing the selection or duplicating
+            editor.replaceRange(content, cursorPosition);
+            cursorPosition.ch += content.length;
+          }
+        }
+      } catch (error) {
+        console.error('Error interacting with OpenAI:', error);
+      }
+    });
+
+    templateModal.open();
   }
 
   async handleFullNoteWithPrompt(editor: Editor) {
@@ -372,5 +428,33 @@ class PromptModal extends Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
+  }
+}
+
+class TemplateSuggestModal extends SuggestModal<TFile> {
+  plugin: AssistantPlugin;
+  onSelect: (templateContent: string) => void;
+
+  constructor(app: App, plugin: AssistantPlugin, onSelect: (templateContent: string) => void) {
+    super(app);
+    this.plugin = plugin;
+    this.onSelect = onSelect;
+  }
+
+  getSuggestions(query: string): TFile[] {
+    const promptsFolderPath = this.plugin.settings.promptsFolder ? this.app.vault.getAbstractFileByPath(this.plugin.settings.promptsFolder) : null;
+    if (promptsFolderPath && 'children' in promptsFolderPath) {
+      return promptsFolderPath.children.filter((file) => file instanceof TFile && file.basename.toLowerCase().includes(query.toLowerCase())) as TFile[];
+    }
+    return [];
+  }
+
+  renderSuggestion(file: TFile, el: HTMLElement) {
+    el.createEl('div', { text: file.basename });
+  }
+
+  async onChooseSuggestion(file: TFile, evt: MouseEvent | KeyboardEvent) {
+    const templateContent = await this.app.vault.read(file);
+    this.onSelect(templateContent);
   }
 }
