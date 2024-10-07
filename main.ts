@@ -6,12 +6,14 @@ interface AssistantSettings {
   apiKey: string;
   systemMessage: string;
   model: string;
+  promptsFolder: string;
 }
 
 const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: '',
   systemMessage: '',
   model: 'gpt-3.5-turbo',
+  promptsFolder: '',
 };
 
 export default class AssistantPlugin extends Plugin {
@@ -103,7 +105,7 @@ export default class AssistantPlugin extends Plugin {
   async handleSelectedTextWithPrompt(editor: Editor) {
     const selectedText = editor.getSelection();
 
-    const promptModal = new PromptModal(this.app, async (userPrompt: string) => {
+    const promptModal = new PromptModal(this.app, this, async (userPrompt: string) => {
       if (!userPrompt) {
         console.log('No prompt provided.');
         return;
@@ -162,7 +164,7 @@ export default class AssistantPlugin extends Plugin {
       return;
     }
 
-    const promptModal = new PromptModal(this.app, async (userPrompt: string) => {
+    const promptModal = new PromptModal(this.app, this, async (userPrompt: string) => {
       if (!userPrompt) {
         console.log('No prompt provided.');
         return;
@@ -259,6 +261,19 @@ class AssistantSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Prompts Folder')
+      .setDesc('Select the folder containing your pre-saved prompts.')
+      .addText((text) =>
+        text
+          .setPlaceholder('Enter folder path here...')
+          .setValue(this.plugin.settings.promptsFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.promptsFolder = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName('System Message')
       .setDesc('Enter the system message for GPT interactions. Leave blank for no system message.')
       .addTextArea((text) =>
@@ -274,19 +289,47 @@ class AssistantSettingTab extends PluginSettingTab {
 }
 
 class PromptModal extends Modal {
+  plugin: AssistantPlugin;
   onSubmit: (input: string) => void;
 
-  constructor(app: App, onSubmit: (input: string) => void) {
+  constructor(app: App, plugin: AssistantPlugin, onSubmit: (input: string) => void) {
     super(app);
+    this.plugin = plugin;
+    this.onSubmit = onSubmit;
     this.onSubmit = onSubmit;
   }
 
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
+
+    const promptsFolderPath = this.plugin.settings.promptsFolder ? this.app.vault.getAbstractFileByPath(this.plugin.settings.promptsFolder) : null;
+    let promptNotes = [];
+
+    if (promptsFolderPath && 'children' in promptsFolderPath) {
+      promptNotes = promptsFolderPath.children.filter((file) => file instanceof TFile);
+    }
     contentEl.addClass('prompt-modal');
 
     const container = contentEl.createDiv({ cls: 'prompt-container' });
+
+    const selectEl = container.createEl('select', {
+      cls: 'prompt-select',
+    });
+
+    selectEl.createEl('option', { value: '', text: 'Select a pre-saved prompt...' });
+
+    promptNotes.forEach((note) => {
+      selectEl.createEl('option', { value: note.path, text: note.basename });
+    });
+
+    selectEl.addEventListener('change', async (event) => {
+      const filePath = (event.target as HTMLSelectElement).value;
+      if (filePath) {
+        const promptContent = await this.app.vault.read(this.app.vault.getAbstractFileByPath(filePath) as TFile);
+        inputEl.value = promptContent;
+      }
+    });
     container.createEl('h2', { text: 'Enter your prompt', cls: 'prompt-header' });
 
     const inputEl = container.createEl('textarea', {
@@ -313,6 +356,7 @@ class PromptModal extends Modal {
     });
 
     container.style.display = 'flex';
+    container.insertBefore(selectEl, inputEl);
     container.style.flexDirection = 'column';
     container.style.alignItems = 'center';
     container.style.gap = '20px';
