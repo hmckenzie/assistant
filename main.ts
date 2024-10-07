@@ -61,6 +61,13 @@ export default class AssistantPlugin extends Plugin {
       editorCallback: (editor: Editor) => this.handleFullNoteWithPrompt(editor),
     });
 
+    // Add a command to send full note text to OpenAI with a template from the Prompts Folder
+    this.addCommand({
+      id: 'send-full-note-with-template-to-openai',
+      name: 'Send Full Note with Template to OpenAI',
+      editorCallback: (editor: Editor) => this.handleFullNoteWithTemplate(editor),
+    });
+
     // Add a settings tab for API key configuration
     this.addSettingTab(new AssistantSettingTab(this.app, this));
   }
@@ -264,6 +271,65 @@ export default class AssistantPlugin extends Plugin {
     });
 
     promptModal.open();
+  }
+
+  async handleFullNoteWithTemplate(editor: Editor) {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      console.log('No active file found.');
+      return;
+    }
+
+    const fileContent = await this.app.vault.read(activeFile);
+    if (!fileContent) {
+      console.log('The current note is empty.');
+      return;
+    }
+
+    const templateModal = new TemplateSuggestModal(this.app, this, async (templateContent: string) => {
+      if (!templateContent) {
+        console.log('No template selected.');
+        return;
+      }
+
+      const client = new OpenAI({
+        apiKey: this.settings.apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+
+      const cursorPosition = editor.getCursor('to');
+
+      try {
+        const responseStream = await client.chat.completions.create({
+          messages: [
+            { role: 'system', content: this.settings.systemMessage },
+            { role: 'user', content: `Template: ${templateContent}\n\nFull Note: ${fileContent}` },
+          ],
+          model: this.settings.model,
+          stream: true,
+        });
+
+        let responseText = '';
+        // Add a newline before the response to separate it from the full note
+        editor.replaceRange('\n\n', cursorPosition);
+        cursorPosition.line += 2;
+        cursorPosition.ch = 0;
+
+        for await (const part of responseStream) {
+          const content = part.choices[0]?.delta?.content;
+          if (content) {
+            responseText += content;
+            // Append new content without replacing existing text or duplicating
+            editor.replaceRange(content, cursorPosition);
+            cursorPosition.ch += content.length;
+          }
+        }
+      } catch (error) {
+        console.error('Error interacting with OpenAI:', error);
+      }
+    });
+
+    templateModal.open();
   }
 
   async loadSettings() {
