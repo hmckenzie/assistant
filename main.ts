@@ -81,6 +81,13 @@ export default class AssistantPlugin extends Plugin {
       name: 'Reset Embeddings',
       callback: () => this.resetEmbeddings(),
     });
+
+    // Add a command to show a SuggestModal with notes sorted by similarity to the selected text
+    this.addCommand({
+      id: 'show-similar-notes',
+      name: 'Show Similar Notes',
+      editorCallback: (editor: Editor) => this.handleShowSimilarNotes(editor),
+    });
     
     // Add a settings tab for API key configuration
     this.addSettingTab(new AssistantSettingTab(this.app, this));
@@ -442,6 +449,59 @@ export default class AssistantPlugin extends Plugin {
     }
   }
 
+  async handleShowSimilarNotes(editor: Editor) {
+    const selectedText = editor.getSelection();
+    if (!selectedText) {
+      new Notice('No text selected.');
+      return;
+    }
+
+    const client = new OpenAI({
+      apiKey: this.settings.apiKey,
+      dangerouslyAllowBrowser: true,
+    });
+
+    try {
+      // Create embedding for the selected text
+      const embeddingResponse = await client.embeddings.create({
+        input: selectedText,
+        model: 'text-embedding-ada-002',
+      });
+
+      const selectedTextEmbedding = embeddingResponse.data[0].embedding;
+
+      // Load existing embeddings from the file
+      const embeddingsData = JSON.parse(await this.app.vault.adapter.read('.obsidian/plugins/assistant/embeddings.json'));
+
+      // Calculate similarity for each chunk and sort them
+      const similarityScores = embeddingsData.map((data) => {
+        return {
+          notePath: data.notePath,
+          similarity: this.cosineSimilarity(selectedTextEmbedding, data.embedding),
+        };
+      });
+
+      similarityScores.sort((a, b) => b.similarity - a.similarity);
+
+      // Get unique note paths, sorted by highest similarity
+      const uniqueNotePaths = Array.from(new Set(similarityScores.map((score) => score.notePath)));
+
+      // Show the SuggestModal with sorted notes
+      const similarNotesModal = new SimilarNotesSuggestModal(this.app, uniqueNotePaths);
+      similarNotesModal.open();
+    } catch (error) {
+      new Notice('Error calculating similarity.');
+      console.error('Error calculating similarity:', error);
+    }
+  }
+
+  cosineSimilarity(vecA, vecB) {
+    const dotProduct = vecA.reduce((sum, a, idx) => sum + a * vecB[idx], 0);
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, val) => sum + val * val, 0));
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, val) => sum + val * val, 0));
+    return dotProduct / (magnitudeA * magnitudeB);
+  }
+
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
@@ -655,5 +715,33 @@ class FolderSuggestModal extends SuggestModal<TFolder> {
 
   async onChooseSuggestion(folder: TFolder, evt: MouseEvent | KeyboardEvent) {
     this.onSelect(folder);
+  }
+}
+
+class SimilarNotesSuggestModal extends SuggestModal<string> {
+  notePaths: string[];
+
+  constructor(app: App, notePaths: string[]) {
+    super(app);
+    this.notePaths = notePaths;
+  }
+
+  getSuggestions(query: string): string[] {
+    return this.notePaths.filter((path) => path.toLowerCase().includes(query.toLowerCase()));
+  }
+
+  renderSuggestion(notePath: string, el: HTMLElement) {
+    const note = this.app.vault.getAbstractFileByPath(notePath) as TFile;
+    if (note) {
+      el.createEl('div', { text: note.basename });
+    }
+  }
+
+  async onChooseSuggestion(notePath: string, evt: MouseEvent | KeyboardEvent) {
+    const note = this.app.vault.getAbstractFileByPath(notePath) as TFile;
+    if (note) {
+      const leaf = this.app.workspace.getLeaf(true);
+      leaf.openFile(note);
+    }
   }
 }
