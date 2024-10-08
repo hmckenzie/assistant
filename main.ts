@@ -75,6 +75,13 @@ export default class AssistantPlugin extends Plugin {
       callback: () => this.handleCreateEmbeddingsForFolder(),
     });
 
+    // Add a command to reset embeddings
+    this.addCommand({
+      id: 'reset-embeddings',
+      name: 'Reset Embeddings',
+      callback: () => this.resetEmbeddings(),
+    });
+    
     // Add a settings tab for API key configuration
     this.addSettingTab(new AssistantSettingTab(this.app, this));
   }
@@ -87,7 +94,7 @@ export default class AssistantPlugin extends Plugin {
 
     const selectedText = editor.getSelection();
     if (!selectedText) {
-      console.log('No text selected.');
+      new Notice('No text selected.');
       return;
     }
 
@@ -119,6 +126,7 @@ export default class AssistantPlugin extends Plugin {
         }
       }
     } catch (error) {
+      new Notice('Error interacting with OpenAI.');
       console.error('Error interacting with OpenAI:', error);
     }
   }
@@ -128,7 +136,7 @@ export default class AssistantPlugin extends Plugin {
 
     const promptModal = new PromptModal(this.app, this, async (userPrompt: string) => {
       if (!userPrompt) {
-        console.log('No prompt provided.');
+        new Notice('No prompt provided.');
         return;
       }
 
@@ -165,6 +173,7 @@ export default class AssistantPlugin extends Plugin {
           }
         }
       } catch (error) {
+        new Notice('Error interacting with OpenAI.');
         console.error('Error interacting with OpenAI:', error);
       }
     });
@@ -177,7 +186,7 @@ export default class AssistantPlugin extends Plugin {
 
     const templateModal = new TemplateSuggestModal(this.app, this, async (templateContent: string) => {
       if (!templateContent) {
-        console.log('No template selected.');
+        new Notice('No template selected.');
         return;
       }
 
@@ -214,6 +223,7 @@ export default class AssistantPlugin extends Plugin {
           }
         }
       } catch (error) {
+        new Notice('Error interacting with OpenAI.');
         console.error('Error interacting with OpenAI:', error);
       }
     });
@@ -224,7 +234,7 @@ export default class AssistantPlugin extends Plugin {
   async handleFullNoteWithPrompt(editor: Editor) {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
-      console.log('No active file found.');
+      new Notice('No active file found.');
       return;
     }
 
@@ -236,7 +246,7 @@ export default class AssistantPlugin extends Plugin {
 
     const promptModal = new PromptModal(this.app, this, async (userPrompt: string) => {
       if (!userPrompt) {
-        console.log('No prompt provided.');
+        new Notice('No prompt provided.');
         return;
       }
 
@@ -273,6 +283,7 @@ export default class AssistantPlugin extends Plugin {
           }
         }
       } catch (error) {
+        new Notice('Error interacting with OpenAI.');
         console.error('Error interacting with OpenAI:', error);
       }
     });
@@ -283,7 +294,7 @@ export default class AssistantPlugin extends Plugin {
   async handleFullNoteWithTemplate(editor: Editor) {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
-      console.log('No active file found.');
+      new Notice('No active file found.');
       return;
     }
 
@@ -295,7 +306,7 @@ export default class AssistantPlugin extends Plugin {
 
     const templateModal = new TemplateSuggestModal(this.app, this, async (templateContent: string) => {
       if (!templateContent) {
-        console.log('No template selected.');
+        new Notice('No template selected.');
         return;
       }
 
@@ -332,6 +343,7 @@ export default class AssistantPlugin extends Plugin {
           }
         }
       } catch (error) {
+        new Notice('Error interacting with OpenAI.');
         console.error('Error interacting with OpenAI:', error);
       }
     });
@@ -342,7 +354,7 @@ export default class AssistantPlugin extends Plugin {
   async handleCreateEmbeddingsForFolder() {
     const folderModal = new FolderSuggestModal(this.app, this, async (selectedFolder: TFolder) => {
       if (!selectedFolder) {
-        console.log('No folder selected.');
+        new Notice('No folder selected.');
         return;
       }
 
@@ -355,7 +367,7 @@ export default class AssistantPlugin extends Plugin {
 
       const notes = selectedFolder.children.filter((file) => file instanceof TFile) as TFile[];
       if (notes.length === 0) {
-        console.log('No notes found in the selected folder.');
+        new Notice('No notes found in the selected folder.');
         return;
       }
 
@@ -379,6 +391,7 @@ export default class AssistantPlugin extends Plugin {
               noteFilename: note.basename,
             });
           } catch (error) {
+            new Notice(`Error creating embedding for note: ${note.path}`);
             console.error(`Error creating embedding for note: ${note.path}`, error);
           }
         }
@@ -390,6 +403,17 @@ export default class AssistantPlugin extends Plugin {
     });
 
     folderModal.open();
+  }
+
+  async resetEmbeddings() {
+    try {
+      // Clear the embeddings data file
+      await this.app.vault.adapter.write('.obsidian/plugins/assistant/embeddings.json', JSON.stringify([], null, 2));
+      new Notice('Embeddings have been reset.');
+    } catch (error) {
+      new Notice('Error resetting embeddings.');
+      console.error('Error resetting embeddings:', error);
+    }
   }
 
   chunkText(text: string): string[] {

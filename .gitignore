@@ -23,3 +23,7 @@ data.json
 
 # Embeddings
 embeddings.json
+.obsidian/plugins/assistant/embeddings.json
+
+# Test files
+main_test.ts
