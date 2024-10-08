@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Editor, TFile, Modal, SuggestModal } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Editor, TFile, Modal, SuggestModal, TFolder, Notice } from 'obsidian';
 import OpenAI from 'openai';
 import { readFileSync } from 'fs';
 
@@ -66,6 +66,13 @@ export default class AssistantPlugin extends Plugin {
       id: 'send-full-note-with-template-to-openai',
       name: 'Send Full Note with Template to OpenAI',
       editorCallback: (editor: Editor) => this.handleFullNoteWithTemplate(editor),
+    });
+
+    // Add a command to create embeddings for notes in a selected folder
+    this.addCommand({
+      id: 'create-embeddings-for-folder',
+      name: 'Create Embeddings for Folder',
+      callback: () => this.handleCreateEmbeddingsForFolder(),
     });
 
     // Add a settings tab for API key configuration
@@ -332,6 +339,83 @@ export default class AssistantPlugin extends Plugin {
     templateModal.open();
   }
 
+  async handleCreateEmbeddingsForFolder() {
+    const folderModal = new FolderSuggestModal(this.app, this, async (selectedFolder: TFolder) => {
+      if (!selectedFolder) {
+        console.log('No folder selected.');
+        return;
+      }
+
+      new Notice(`Creating embeddings for notes in folder: ${selectedFolder.name}`);
+
+      const client = new OpenAI({
+        apiKey: this.settings.apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+
+      const notes = selectedFolder.children.filter((file) => file instanceof TFile) as TFile[];
+      if (notes.length === 0) {
+        console.log('No notes found in the selected folder.');
+        return;
+      }
+
+      const embeddingsData = [];
+
+      for (const note of notes) {
+        const fileContent = await this.app.vault.read(note);
+        const chunks = this.chunkText(fileContent);
+
+        for (const chunk of chunks) {
+          try {
+            const embeddingResponse = await client.embeddings.create({
+              input: chunk,
+              model: 'text-embedding-ada-002',
+            });
+
+            embeddingsData.push({
+              embedding: embeddingResponse.data[0].embedding,
+              chunk,
+              notePath: note.path,
+              noteFilename: note.basename,
+            });
+          } catch (error) {
+            console.error(`Error creating embedding for note: ${note.path}`, error);
+          }
+        }
+      }
+
+      // Save the embeddingsData for future retrieval and search
+      await this.saveEmbeddings(embeddingsData);
+      new Notice('Embeddings created and saved successfully.');
+    });
+
+    folderModal.open();
+  }
+
+  chunkText(text: string): string[] {
+    const chunkSize = 500;
+    const overlap = 50;
+    const chunks = [];
+
+    let start = 0;
+    while (start < text.length) {
+      const end = Math.min(start + chunkSize, text.length);
+      chunks.push(text.substring(start, end));
+      start += chunkSize - overlap;
+    }
+
+    return chunks;
+  }
+
+  async saveEmbeddings(embeddingsData: any[]) {
+    const data = JSON.stringify(embeddingsData);
+    try {
+      await this.app.vault.adapter.write('.obsidian/plugins/assistant/embeddings.json', data);
+    } catch (error) {
+      console.error('Error saving embeddings:', error);
+    }
+  }
+
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
@@ -522,5 +606,28 @@ class TemplateSuggestModal extends SuggestModal<TFile> {
   async onChooseSuggestion(file: TFile, evt: MouseEvent | KeyboardEvent) {
     const templateContent = await this.app.vault.read(file);
     this.onSelect(templateContent);
+  }
+}
+
+class FolderSuggestModal extends SuggestModal<TFolder> {
+  plugin: AssistantPlugin;
+  onSelect: (selectedFolder: TFolder) => void;
+
+  constructor(app: App, plugin: AssistantPlugin, onSelect: (selectedFolder: TFolder) => void) {
+    super(app);
+    this.plugin = plugin;
+    this.onSelect = onSelect;
+  }
+
+  getSuggestions(query: string): TFolder[] {
+    return this.app.vault.getAllLoadedFiles().filter((file) => file instanceof TFolder && file.name.toLowerCase().includes(query.toLowerCase())) as TFolder[];
+  }
+
+  renderSuggestion(folder: TFolder, el: HTMLElement) {
+    el.createEl('div', { text: folder.name });
+  }
+
+  async onChooseSuggestion(folder: TFolder, evt: MouseEvent | KeyboardEvent) {
+    this.onSelect(folder);
   }
 }
