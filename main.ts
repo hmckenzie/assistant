@@ -384,8 +384,8 @@ export default class AssistantPlugin extends Plugin {
         }
       }
 
-      // Save the embeddingsData for future retrieval and search
-      await this.saveEmbeddings(embeddingsData);
+      // Append the embeddingsData for future retrieval and search
+      await this.appendEmbeddings(embeddingsData);
       new Notice('Embeddings created and saved successfully.');
     });
 
@@ -407,12 +407,14 @@ export default class AssistantPlugin extends Plugin {
     return chunks;
   }
 
-  async saveEmbeddings(embeddingsData: any[]) {
-    const data = JSON.stringify(embeddingsData);
+  async appendEmbeddings(embeddingsData: any[]) {
     try {
-      await this.app.vault.adapter.write('.obsidian/plugins/assistant/embeddings.json', data);
+      const existingData = await this.app.vault.adapter.read('.obsidian/plugins/assistant/embeddings.json');
+      const parsedData = existingData ? JSON.parse(existingData) : [];
+      const combinedData = parsedData.concat(embeddingsData);
+      await this.app.vault.adapter.write('.obsidian/plugins/assistant/embeddings.json', JSON.stringify(combinedData, null, 2));
     } catch (error) {
-      console.error('Error saving embeddings:', error);
+      console.error('Error appending embeddings:', error);
     }
   }
 
