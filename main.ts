@@ -89,6 +89,13 @@ export default class AssistantPlugin extends Plugin {
       editorCallback: (editor: Editor) => this.handleShowSimilarNotes(editor),
     });
     
+    // Add a command to send a prompt with the selected text and the top ten most relevant chunks
+    this.addCommand({
+      id: 'send-selection-with-top-chunks',
+      name: 'Send Selection with Top Chunks',
+      editorCallback: (editor: Editor) => this.handleSendWithTopChunks(editor),
+    });
+    
     // Add a settings tab for API key configuration
     this.addSettingTab(new AssistantSettingTab(this.app, this));
   }
@@ -501,6 +508,86 @@ export default class AssistantPlugin extends Plugin {
     const magnitudeB = Math.sqrt(vecB.reduce((sum, val) => sum + val * val, 0));
     return dotProduct / (magnitudeA * magnitudeB);
   }
+
+  async handleSendWithTopChunks(editor: Editor) {
+    const selectedText = editor.getSelection();
+    
+    // Open a prompt modal for the user to provide additional input
+    const promptModal = new PromptModal(this.app, this, async (userPrompt: string) => {
+      if (!userPrompt) {
+        new Notice('No prompt provided.');
+        return;
+      }
+  
+      const client = new OpenAI({
+        apiKey: this.settings.apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+  
+      try {
+        // Create embedding for the combined prompt and selected text (if any)
+        const combinedText = `${userPrompt}${selectedText ? '\n\nSelected Text: ' + selectedText : ''}`;
+        const embeddingResponse = await client.embeddings.create({
+          input: combinedText,
+          model: 'text-embedding-ada-002',
+        });
+  
+        const combinedEmbedding = embeddingResponse.data[0].embedding;
+  
+        // Load existing embeddings from the file
+        const embeddingsData = JSON.parse(await this.app.vault.adapter.read('.obsidian/plugins/assistant/embeddings.json'));
+  
+        // Calculate similarity for each chunk and sort them
+        const similarityScores = embeddingsData.map((data) => {
+          return {
+            chunk: data.chunk,
+            similarity: this.cosineSimilarity(combinedEmbedding, data.embedding),
+          };
+        });
+  
+        // Sort chunks by similarity in descending order and get the top 10 most similar chunks
+        similarityScores.sort((a, b) => b.similarity - a.similarity);
+        const topChunks = similarityScores.slice(0, 10).map((score) => score.chunk).join('\n\n');
+  
+        // Prepare the final prompt to be sent to OpenAI
+        const finalPrompt = `Prompt: ${userPrompt}${selectedText ? '\n\nSelected Text: ' + selectedText : ''}\n\nTop Relevant Chunks: ${topChunks}`;
+  
+        const cursorPosition = editor.getCursor('to');
+  
+        // Send the final prompt to OpenAI and stream the response back to the editor
+        const responseStream = await client.chat.completions.create({
+          messages: [
+            { role: 'system', content: this.settings.systemMessage },
+            { role: 'user', content: finalPrompt },
+          ],
+          model: this.settings.model,
+          stream: true,
+        });
+  
+        let responseText = '';
+        // Add a newline before the response to separate it from the existing content
+        editor.replaceRange('\n\n', cursorPosition);
+        cursorPosition.line += 2;
+        cursorPosition.ch = 0;
+  
+        for await (const part of responseStream) {
+          const content = part.choices[0]?.delta?.content;
+          if (content) {
+            responseText += content;
+            // Append new content without replacing the selection or duplicating
+            editor.replaceRange(content, cursorPosition);
+            cursorPosition.ch += content.length;
+          }
+        }
+      } catch (error) {
+        new Notice('Error interacting with OpenAI or calculating similarity.');
+        console.error('Error:', error);
+      }
+    });
+  
+    promptModal.open();
+  }
+  
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
