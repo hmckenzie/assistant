@@ -7,6 +7,7 @@ interface AssistantSettings {
   systemMessage: string;
   model: string;
   promptsFolder: string;
+  verboseLogging: boolean; // Add a setting for verbose logging
 }
 
 const DEFAULT_SETTINGS: AssistantSettings = {
@@ -14,6 +15,7 @@ const DEFAULT_SETTINGS: AssistantSettings = {
   systemMessage: '',
   model: 'gpt-3.5-turbo',
   promptsFolder: '',
+  verboseLogging: false, // Default to false
 };
 
 export default class AssistantPlugin extends Plugin {
@@ -579,6 +581,12 @@ export default class AssistantPlugin extends Plugin {
             cursorPosition.ch += content.length;
           }
         }
+
+      // Log the conversation if verbose logging is enabled
+      if (this.settings.verboseLogging) {
+        console.log('Prompt:', finalPrompt);
+        console.log('Response:', responseText);
+      }
       } catch (error) {
         new Notice('Error interacting with OpenAI or calculating similarity.');
         console.error('Error:', error);
